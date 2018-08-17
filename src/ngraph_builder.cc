@@ -2511,8 +2511,10 @@ Status Builder::TranslateGraph(const std::vector<TensorShape>& inputs,
 
     if (n->type_string() == "_Arg") {
       tf_params.push_back(n);
+      NGRAPH_VLOG(5) << "node type string _Arg found " << n->name();
     } else if (n->type_string() == "_Retval") {
       tf_ret_vals.push_back(n);
+      NGRAPH_VLOG(5) << "node type string _Retval found " << n->name();
     } else {
       tf_ops.push_back(n);
     }
