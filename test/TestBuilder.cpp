@@ -19,6 +19,7 @@
 #include "ngraph_utils.h"
 #include "tf_graph_writer.h"
 
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -90,6 +91,8 @@ void RewriteForNGraph(Graph& graph, string test_op_name,
   for (Node* node : graph.nodes()) {
     LOG(INFO) << "op " << node->type_string();
     if (node->IsSource() || node->IsSink()) {
+      NGRAPH_VLOG(5) << "node ip" << node->num_inputs();
+      NGRAPH_VLOG(5) << "node ip" << node->num_outputs();
       continue;
     } else if (node->type_string() == test_op_name) {
       // only one node of type test_op
@@ -108,41 +111,45 @@ void RewriteForNGraph(Graph& graph, string test_op_name,
   vector<Tensor*> input_tensors(number_of_inputs);
   vector<Node*> input_node(number_of_inputs);
 
+  Tensor ip_tensor;
   for (int i = 0; i < number_of_inputs; i++) {
     Node* ip;
     ASSERT_EQ(Status::OK(), test_op->input_node(i, &ip));
     NGRAPH_VLOG(5) << "input " << i;
     NGRAPH_VLOG(5) << "input name " << ip->name() << " type "
                    << ip->type_string();
-    Tensor ip_tensor;
+
     ASSERT_EQ(Status::OK(), GetNodeAttr(ip->attrs(), "value", &ip_tensor));
+    NGRAPH_VLOG(5) << "input type " << i << " :" << ip_tensor.dtype();
+
     DummyPrintTensor(ip_tensor);
-    NGRAPH_VLOG(5) << "input type " << i <<" :" << ip_tensor.dtype(); 
+    NGRAPH_VLOG(5) << "input type " << i << " :" << ip_tensor.dtype();
     input_shapes[i] = ip_tensor.shape();
     input_tensors[i] = &ip_tensor;
     input_node[i] = ip;
   }
 
   // replace inputs with
-  for(int i=0; i<number_of_inputs; i++){
+  for (int i = 0; i < number_of_inputs; i++) {
     // Add new _arg s node
     string new_node_name = "arg_" + std::to_string(i);  // or ngraph_input_
     NodeDef* new_arg_node_def = new NodeDef();
     new_arg_node_def->set_name(new_node_name);
     new_arg_node_def->set_op("_Arg");
-    //new_arg_node_def->SetAttr("T", input_tensors[i]->dtype());
-    //new_arg_node_def->SetAttr("index", i);
-    NGRAPH_VLOG(5) << "arg type " << i <<" : " << input_tensors[i]->dtype(); 
-    NGRAPH_VLOG(5) << "shape type " << i <<" : " << input_tensors[i]->shape();
-    NGRAPH_VLOG(5) << "arg val " << i <<" : " << input_tensors[i]->DebugString();  
-    SetAttrValue(input_tensors[i]->dtype(), &((*(new_arg_node_def->mutable_attr()))["T"]));
-    SetAttrValue(i,
-                  &((*(new_arg_node_def->mutable_attr()))["index"]));
+    // new_arg_node_def->SetAttr("T", input_tensors[i]->dtype());
+    // new_arg_node_def->SetAttr("index", i);
+    NGRAPH_VLOG(5) << "arg type " << i << " : " << input_tensors[i]->dtype();
+    NGRAPH_VLOG(5) << "shape type " << i << " : " << input_tensors[i]->shape();
+    NGRAPH_VLOG(5) << "arg val " << i << " : "
+                   << input_tensors[i]->DebugString();
+    SetAttrValue(input_tensors[i]->dtype(),
+                 &((*(new_arg_node_def->mutable_attr()))["T"]));
+    SetAttrValue(i, &((*(new_arg_node_def->mutable_attr()))["index"]));
 
     Status status;
     Node* arg_node = graph.AddNode(*new_arg_node_def, &status);
     ASSERT_EQ(Status::OK(), status);
-    
+
     // Removes a node from this graph, including all edges from or to it.
     // *node should not be accessed after calling this function.
     // REQUIRES: node->IsOp()
@@ -160,9 +167,9 @@ void RewriteForNGraph(Graph& graph, string test_op_name,
     NodeDef* new_ret_node_def = new NodeDef();
     new_ret_node_def->set_name(new_node_name);
     new_ret_node_def->set_op("_Retval");
-    SetAttrValue(output_datatypes[i], &((*(new_ret_node_def->mutable_attr()))["T"]));
-    SetAttrValue(i,
-                  &((*(new_ret_node_def->mutable_attr()))["index"]));
+    SetAttrValue(output_datatypes[i],
+                 &((*(new_ret_node_def->mutable_attr()))["T"]));
+    SetAttrValue(i, &((*(new_ret_node_def->mutable_attr()))["index"]));
 
     Status status;
     Node* ret_node = graph.AddNode(*new_ret_node_def, &status);
@@ -172,79 +179,57 @@ void RewriteForNGraph(Graph& graph, string test_op_name,
   }
 
   GraphToPbTextFile(&graph, "rewrite_ngraph_pbtxtfile.pbtxt");
-
-  //Create nGraph function
+  NGRAPH_VLOG(5) << "num nodes  " << graph.num_nodes();
+  // Create nGraph function
+  NGRAPH_VLOG(5) << " Create ng function ";
   shared_ptr<ng::Function> ng_function;
-  ASSERT_EQ(Status::OK(), ngraph_bridge::Builder::TranslateGraph(input_shapes, &graph, ng_function));
+  ASSERT_EQ(Status::OK(),
+            Builder::TranslateGraph(input_shapes, &graph, ng_function));
 
-  //Create nGraph backend
+  // Create nGraph backend
   // Create the nGraph backend
+  NGRAPH_VLOG(5) << " Create backend ";
   auto backend = ng::runtime::Backend::create("CPU");
 
+  NGRAPH_VLOG(5) << " backend created ";
   // Allocate tensors for inputs
-  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_ip_tensors(number_of_inputs);
-  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_op_tensors(number_of_outputs);
+  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_ip_tensors(
+      number_of_inputs);
+  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_op_tensors(
+      number_of_outputs);
 
-  for(int i=0; i<number_of_inputs; i++){
-    ng::Shape ng_shape=ng_function->get_output_shape(i);
+  for (int i = 0; i < number_of_inputs; i++) {
+    ng::Shape ng_shape;
+    ASSERT_EQ(Status::OK(),
+              TFTensorShapeToNGraphShape(input_shapes[i], &ng_shape));
+    NGRAPH_VLOG(5) << " got op shape " << i;
     ng::element::Type ng_et;
-    ASSERT_EQ(Status::OK(),TFDataTypeToNGraphElementType(input_tensors[i]->dtype(), &ng_et));
-    NGRAPH_VLOG(5) << " before casting ";
-    ng_ip_tensors[i] = backend->create_tensor(ng_et, ng_shape, (void*) (input_tensors[i]));
+    NGRAPH_VLOG(5) << " for tensor " << input_tensors[i]->DebugString();
+    ASSERT_EQ(Status::OK(),
+              TFDataTypeToNGraphElementType(input_tensors[i]->dtype(), &ng_et));
+    NGRAPH_VLOG(5)<< " before casting";
+    void* src_ptr = (void*)DMAHelper::base(input_tensors[i]);
+    ng_ip_tensors[i] = backend->create_tensor(ng_et, ng_shape, src_ptr);
+   // ng_ip_tensors[i]->write(input_tensors[i], 0, sizeof(input_tensors[i]));
   }
 
-  for(int i=0; i<number_of_outputs; i++){
-    ng::Shape ng_shape;
-    ASSERT_EQ(Status::OK(),TFTensorShapeToNGraphShape(input_shapes[i], &ng_shape));
+  NGRAPH_VLOG(5) << " Creating ng ouptuts ";
+  for (int i = 0; i < number_of_outputs; i++) {
+    ng::Shape ng_shape = ng_function->get_output_shape(i);
     ng::element::Type ng_et;
-    ASSERT_EQ(Status::OK(),TFDataTypeToNGraphElementType(output_datatypes[i], &ng_et));
+    ASSERT_EQ(Status::OK(),
+              TFDataTypeToNGraphElementType(output_datatypes[i], &ng_et));
     ng_op_tensors[i] = backend->create_tensor(ng_et, ng_shape);
   }
 
-  // Execute the nGraph function.
-  cout << "Calling nGraph function\n";
-  backend->call(ng_function, ng_op_tensors, ng_ip_tensors);
+// Executetthe nGraph
+NGRAPH_VLOG(5) << " Executing nGraph";
+backend->call(ng_function, ng_op_tensors, ng_ip_tensors);
 
-  for (auto i = 0; i < ng_function->get_output_size(); i++) {
+for (auto i = 0; i < ng_function->get_output_size(); i++) {
     DumpNGTensor(cout, ng_function->get_output_op(i)->get_name(), ng_op_tensors[i]);
     cout << endl;
   }
-/*
-  ng::Shape ng_shape_x(x.shape().dims());
-  for (int i = 0; i < x.shape().dims(); ++i) {
-    ng_shape_x[i] = x.shape().dim_size(i);
-  }
-
-  ng::Shape ng_shape_y(y.shape().dims());
-  for (int i = 0; i < y.shape().dims(); ++i) {
-    ng_shape_y[i] = y.shape().dim_size(i);
-  }
-
-  auto t_x = backend->create_tensor(ng::element::f32, ng_shape_x);
-  float v_x[2][3] = {{1, 1, 1}, {1, 1, 1}};
-  t_x->write(&v_x, 0, sizeof(v_x));
-
-  auto t_y = backend->create_tensor(ng::element::f32, ng_shape_y);
-  t_y->write(&v_x, 0, sizeof(v_x));
-
-  // Allocate tensor for the result(s)
-  vector<shared_ptr<ng::runtime::TensorView>> outputs;
-  for (auto i = 0; i < ng_function->get_output_size(); i++) {
-    auto shape = ng_function->get_output_shape(i);
-    auto elem_type = ng_function->get_output_element_type(i);
-    auto t_result = backend->create_tensor(elem_type, shape);
-    outputs.push_back(t_result);
-  }
-
-  // Execute the nGraph function.
-  cout << "Calling nGraph function\n";
-  backend->call(ng_function, outputs, {t_x, t_y});
-
-  for (auto i = 0; i < ng_function->get_output_size(); i++) {
-    DumpNGTensor(cout, ng_function->get_output_op(i)->get_name(), outputs[i]);
-    cout << endl;
-  }
-  */
 }
 
 TEST(TestBuilder, DirectExecution) {
@@ -254,15 +239,15 @@ TEST(TestBuilder, DirectExecution) {
   int num_classes = 2;
   Tensor A(DT_FLOAT, TensorShape({batch_size, num_classes}));
   Tensor B(DT_FLOAT, TensorShape({batch_size, num_classes}));
-  //Tensor features(DT_FLOAT, TensorShape({batch_size, num_classes}));
-  //Tensor labels(DT_INT32, TensorShape({batch_size}));
-  //DummyAssignInputValues(features, 1.0f);
-  //DummyAssignInputIntValues(labels, num_classes);
-  DummyAssignInputValues(A, 1.0f);
-  DummyAssignInputValues(B, 1.0f);
-  auto R =ops::Add(root, A, B);
-  //auto R = ops::SparseSoftmaxCrossEntropyWithLogits(root, features, labels);
-  //vector<DataType> output_datatypes = {DT_FLOAT, DT_FLOAT};
+  // Tensor features(DT_FLOAT, TensorShape({batch_size, num_classes}));
+  // Tensor labels(DT_INT32, TensorShape({batch_size}));
+  // DummyAssignInputValues(features, 1.0f);
+  // DummyAssignInputIntValues(labels, num_classes);
+  DummyAssignInputValues(A, 2.0f);
+  DummyAssignInputValues(B, 2.0f);
+  auto R = ops::MatMul(root, A, B);
+  // auto R = ops::SparseSoftmaxCrossEntropyWithLogits(root, features, labels);
+  // vector<DataType> output_datatypes = {DT_FLOAT, DT_FLOAT};
   vector<DataType> output_datatypes = {DT_FLOAT};
   // convert it to graph def
   // GraphDef def;
@@ -271,9 +256,9 @@ TEST(TestBuilder, DirectExecution) {
 
   GraphToPbTextFile(&tf_graph, "tf_ngraph_pbtxtfile.pbtxt");
 
-  //RewriteForNGraph(tf_graph, "SparseSoftmaxCrossEntropyWithLogits",
-                   //output_datatypes);
-  RewriteForNGraph(tf_graph, "Add",output_datatypes);
+  // RewriteForNGraph(tf_graph, "SparseSoftmaxCrossEntropyWithLogits",
+  // output_datatypes);
+  RewriteForNGraph(tf_graph, "MatMul", output_datatypes);
 }
 //
 
