@@ -40,6 +40,8 @@ set(SRC
     padding.cpp
     conversions.cpp
     TestBuilder.cpp
+    TestUtilities.cpp
+    TestCaseBuilder.cpp
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
