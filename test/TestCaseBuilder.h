@@ -33,6 +33,8 @@ namespace ngraph_bridge {
 
 class BuilderTest : public ::testing::Test {
     public:
+    void ComputeOnNGraph(Graph& graph, string test_op_type, vector<Tensor*> tf_inputs,
+                      vector<DataType>& output_datatypes, vector<Tensor*>& ngraph_outputs);
     // Compute the tfGraph on nGraph
 //          graph        : Tf Graph to be computed
 //                         Must have only these nodes

@@ -2473,10 +2473,14 @@ Status Builder::TranslateGraph(const std::vector<TensorShape>& inputs,
   // ought to be `const Node*`, but GetReversePostOrder doesn't use `const`
   NGRAPH_VLOG(5) << "in translate function  ";
   NGRAPH_VLOG(5) << "num nodes buikder " << input_graph->num_nodes();
-  //vector<Node*> ordered;
-  //GetReversePostOrder(*input_graph, &ordered);
+  vector<Node*> ordered;
+  GetReversePostOrder(*input_graph, &ordered);
 
-  //NGRAPH_VLOG(5) << "got ordered  " << ordered.size();
+  // Prints related to graph
+  NGRAPH_VLOG(5) << "Graph Source node " <<input_graph->source_node()->name();
+  NGRAPH_VLOG(5) << "Graph num node ids " <<input_graph->num_node_ids();
+  NGRAPH_VLOG(5) << "num nodes in graph post order " << input_graph->num_nodes();
+  NGRAPH_VLOG(5) << "got ordered  " << ordered.size();
   //
   // Split ops into params, retvals, and all others.
   //
@@ -2484,19 +2488,22 @@ Status Builder::TranslateGraph(const std::vector<TensorShape>& inputs,
   vector<const Node*> tf_ret_vals;
   vector<const Node*> tf_ops;
 
-  //for (const auto n : ordered) {
-  for(Node* n : input_graph->nodes()){
+  //for(Node* n : input_graph->nodes()){
+  for (const auto n : ordered) {
     if (n->IsSink() || n->IsSource()) {
       NGRAPH_VLOG(5) << "Got source or sink";
+      NGRAPH_VLOG(5) << "node type string op found " << n->name();
+      NGRAPH_VLOG(5) << "Num Inputs " << n->num_inputs();
+      NGRAPH_VLOG(5) << "Num Ouputs " << n->num_outputs();
+      NGRAPH_VLOG(5) << "Num In Edges " << n->in_edges().size();
+      NGRAPH_VLOG(5) << "Num Out Edges " << n->out_edges().size();
       continue;
     }
-
     if (n->IsControlFlow()) {
       return errors::Unimplemented(
           "Encountered a control flow op in the nGraph bridge: ",
           n->DebugString());
     }
-
     if (n->type_string() == "_Arg") {
       tf_params.push_back(n);
       NGRAPH_VLOG(5) << "node type string _Arg found " << n->name();
@@ -2505,8 +2512,21 @@ Status Builder::TranslateGraph(const std::vector<TensorShape>& inputs,
       NGRAPH_VLOG(5) << "node type string _Retval found " << n->name();
     } else {
       tf_ops.push_back(n);
+      NGRAPH_VLOG(5) << "node type string op found " << n->name();
     }
+     NGRAPH_VLOG(5) << "node type string op found " << n->name();
+      NGRAPH_VLOG(5) << "Num Inputs " << n->num_inputs();
+      NGRAPH_VLOG(5) << "Num Ouputs " << n->num_outputs();
+      NGRAPH_VLOG(5) << "Num In Edges " << n->in_edges().size();
+      NGRAPH_VLOG(5) << "Num Out Edges " << n->out_edges().size();
   }
+
+  //Iterate over all the edges
+  NGRAPH_VLOG(5) << "Iterate over all edges ";
+  for(const Edge* e : input_graph->edges()){
+      NGRAPH_VLOG(5) << "Edge : src " << e->src()->name() << " dst " <<e->dst()->name(); 
+  }
+
 
   //
   // The op map holds a mapping from TensorFlow op names (strings) to
