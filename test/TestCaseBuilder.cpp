@@ -34,13 +34,14 @@ namespace ngraph_bridge {
 //      ngraph_outputs   : vector of computed nGraph outputs as TF Tensors
 void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
                                   vector<DataType>& output_datatypes,
-                                  vector<Tensor*>& ngraph_outputs) {
-  // Check that the graph has n "Const" nodes and 1 test_op_type node
+                                  vector<Tensor>& ngraph_outputs) {
+  // Validate that the graph has n "Const" nodes and 1 test_op_type node
+  NGRAPH_VLOG(5) << "Validate graph";
   Node* test_op;
   bool found_test_op = false;
   for (Node* node : graph.nodes()) {
     if (node->IsSource() || node->IsSink()) {
-      // continue;
+      continue;
     } else if (node->type_string() == test_op_type) {
       // only one node of type test_op
       ASSERT_FALSE(found_test_op);
@@ -49,35 +50,10 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     } else {
       ASSERT_TRUE(node->type_string() == "Const");
     }
-    // NGRAPH_VLOG(5) << "Got source or sink";
-    NGRAPH_VLOG(5) << "node type string op found " << node->name();
-    NGRAPH_VLOG(5) << "Num Inputs " << node->num_inputs();
-    NGRAPH_VLOG(5) << "Num Ouputs " << node->num_outputs();
-    NGRAPH_VLOG(5) << "Num In Edges " << node->in_edges().size();
-    NGRAPH_VLOG(5) << "Num Out Edges " << node->out_edges().size();
-
-    NGRAPH_VLOG(5) << "Print in edges ";
-    for (const Edge* e : node->in_edges()) {
-      if (e == NULL) {
-        NGRAPH_VLOG(5) << "Found null";
-        continue;
-      }
-      NGRAPH_VLOG(5) << "Found in edge " << e->src()->name();
-    }
-
-    NGRAPH_VLOG(5) << "Print out edges ";
-    for (const Edge* e : node->out_edges()) {
-      if (e == NULL) {
-        NGRAPH_VLOG(5) << "Found null";
-        continue;
-      }
-      NGRAPH_VLOG(5) << "Found out edge " << e->dst()->name();
-    }
-
-    continue;
   }
+  NGRAPH_VLOG(5) << "Validate graph done";
 
-  // Maps
+  // Maps for book keeping
   // src_metadata : key : node
   //                   val : vector<std::make_pair<Node*, int > , i.e. <input
   //                   node *, input index>
@@ -88,7 +64,7 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   map<Node*, vector<pair<Node*, int>>> node_inedge_metadata;
   map<Node*, vector<pair<Node*, int>>> node_outedge_metadata;
   map<Node*, vector<const Edge*>> node_out_edges;
-  NGRAPH_VLOG(5) << "Check graph complete";
+
   for (const Edge* e : graph.edges()) {
     NGRAPH_VLOG(5) << "Edge between, Src: " << e->src()->name()
                    << " Src op index " << e->src_output()
@@ -100,45 +76,45 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     node_out_edges[e->src()].push_back(e);
   }
 
-  // Replace the input nodes ("Const") with _Arg nodes
-  // Get Tensor input shapes and values of the const nodes
+  // Get Tensor input shapes and values from the const nodes
   int number_of_inputs = test_op->num_inputs();
   vector<TensorShape> input_shapes(number_of_inputs);
-  vector<Tensor*> input_tensors(number_of_inputs);
+  vector<Tensor> input_tensors(number_of_inputs);
   vector<Node*> input_node(number_of_inputs);
 
+  Tensor ip_tensor;
   for (int i = 0; i < number_of_inputs; i++) {
     Node* ip;
-    Tensor* ip_tensor = nullptr;
     ASSERT_EQ(Status::OK(), test_op->input_node(i, &ip));
-    NGRAPH_VLOG(5) << "Fetching tensor ";
-    ASSERT_EQ(Status::OK(), GetNodeAttr(ip->attrs(), "value", ip_tensor));
-    input_shapes[i] = ip_tensor->shape();
-    input_tensors[i] = ip_tensor;
     input_node[i] = ip;
+    NGRAPH_VLOG(5) << "Fetching tensor ";
+    ASSERT_EQ(Status::OK(), GetNodeAttr(ip->attrs(), "value", &ip_tensor));
+    input_shapes[i] = ip_tensor.shape();
+    input_tensors[i] = ip_tensor;
     NGRAPH_VLOG(5) << " Print extracted tensor " << i << " "
-                   << ip_tensor->DebugString();
+                   << ip_tensor.DebugString();
   }
 
   NGRAPH_VLOG(5) << "Got input nodes and tensors";
 
+  // Replace the input nodes to Test_op ("Const") with _Arg nodes
   // replace inputs with
   for (int i = 0; i < number_of_inputs; i++) {
     Node* ip_node = input_node[i];
     auto src_nodes_metadata = node_inedge_metadata[ip_node];
     // Define new _arg node, make function
     string new_node_name = "arg_" + std::to_string(i);  // or ngraph_input_
-    NodeDef* new_arg_node_def = new NodeDef();
-    new_arg_node_def->set_name(new_node_name);
-    new_arg_node_def->set_op("_Arg");
-    SetAttrValue(input_tensors[i]->dtype(),
-                 &((*(new_arg_node_def->mutable_attr()))["T"]));
-    SetAttrValue(i, &((*(new_arg_node_def->mutable_attr()))["index"]));
+    NodeDef new_arg_node_def;
+    new_arg_node_def.set_name(new_node_name);
+    new_arg_node_def.set_op("_Arg");
+    SetAttrValue(input_tensors[i].dtype(),
+                 &((*(new_arg_node_def.mutable_attr()))["T"]));
+    SetAttrValue(i, &((*(new_arg_node_def.mutable_attr()))["index"]));
     NGRAPH_VLOG(5) << " Print in arg nodes " << i << " "
-                   << input_tensors[i]->DebugString();
+                   << input_tensors[i].DebugString();
     // Add node to graph
     Status status;
-    Node* arg_node = graph.AddNode(*new_arg_node_def, &status);
+    Node* arg_node = graph.AddNode(new_arg_node_def, &status);
     ASSERT_EQ(Status::OK(), status);
 
     // Removes a node from this graph, including all edges from or to it.
@@ -170,17 +146,17 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   }
 
   for (int i = 0; i < number_of_outputs; i++) {
-    // Add new _args node
+    // Add new retval_ node
     string new_node_name = "retval_" + std::to_string(i);  // or ngraph_retval_
-    NodeDef* new_ret_node_def = new NodeDef();
-    new_ret_node_def->set_name(new_node_name);
-    new_ret_node_def->set_op("_Retval");
+    NodeDef new_ret_node_def;
+    new_ret_node_def.set_name(new_node_name);
+    new_ret_node_def.set_op("_Retval");
     SetAttrValue(output_datatypes[i],
-                 &((*(new_ret_node_def->mutable_attr()))["T"]));
-    SetAttrValue(i, &((*(new_ret_node_def->mutable_attr()))["index"]));
+                 &((*(new_ret_node_def.mutable_attr()))["T"]));
+    SetAttrValue(i, &((*(new_ret_node_def.mutable_attr()))["index"]));
 
     Status status;
-    Node* ret_node = graph.AddNode(*new_ret_node_def, &status);
+    Node* ret_node = graph.AddNode(new_ret_node_def, &status);
     ASSERT_EQ(Status::OK(), status);
 
     // Add edges from ret_val to sink
@@ -200,9 +176,10 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     NGRAPH_VLOG(5) << "Edge between, Src: " << e->src()->name()
                    << " ,Dst: " << e->dst()->name();
   }
-
+  // For debug
   GraphToPbTextFile(&graph, "rewrite_ngraph.pbtxt");
   NGRAPH_VLOG(5) << "num nodes  " << graph.num_nodes();
+
   // Create nGraph function
   NGRAPH_VLOG(5) << " Create ng function ";
   shared_ptr<ng::Function> ng_function;
@@ -218,27 +195,25 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
 
   NGRAPH_VLOG(5) << " backend created ";
   // Allocate tensors for inputs
-  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_ip_tensors(
-      number_of_inputs);
-  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_op_tensors(
-      number_of_outputs);
+  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_ip_tensors;
+  vector<std::shared_ptr<ngraph::runtime::TensorView>> ng_op_tensors;
 
+  NGRAPH_VLOG(5) << " Creating ng inputs ";
   for (int i = 0; i < number_of_inputs; i++) {
     ng::Shape ng_shape;
     ASSERT_EQ(Status::OK(),
               TFTensorShapeToNGraphShape(input_shapes[i], &ng_shape));
-    NGRAPH_VLOG(5) << " got op shape " << i;
     ng::element::Type ng_et;
-    NGRAPH_VLOG(5) << " for tensor " << input_tensors[i]->DebugString();
+    NGRAPH_VLOG(5) << " for tensor " << input_tensors[i].DebugString();
     ASSERT_EQ(Status::OK(),
-              TFDataTypeToNGraphElementType(input_tensors[i]->dtype(), &ng_et));
-    NGRAPH_VLOG(5) << " before casting";
-    void* src_ptr = (void*)DMAHelper::base(input_tensors[i]);
-    ng_ip_tensors[i] = backend->create_tensor(ng_et, ng_shape, src_ptr);
-    // ng_ip_tensors[i]->write(input_tensors[i], 0, sizeof(input_tensors[i]));
+              TFDataTypeToNGraphElementType(input_tensors[i].dtype(), &ng_et));
+    void* src_ptr = (void*)DMAHelper::base(&input_tensors[i]);
+    auto result = backend->create_tensor(ng_et, ng_shape, src_ptr);
+    ng_ip_tensors.push_back(result);
   }
 
-  NGRAPH_VLOG(5) << " Creating ng ouptuts ";
+  NGRAPH_VLOG(5) << " Creating ng outputs ";
+  vector<TensorShape> tf_op_shapes;
   for (int i = 0; i < number_of_outputs; i++) {
     auto ng_op_shape = ng_function->get_output_shape(i);
     auto ng_op_type = ng_function->get_output_element_type(i);
@@ -251,29 +226,32 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     // check this comparison/overloades
     // ASSERT_EQ(ng_et_expected, output_datatypes[i]);
     NGRAPH_VLOG(5) << " check shape ";
-    TensorShape tf_shape;
-    ASSERT_EQ(Status::OK(), NGraphShapeToTFShape(ng_op_shape, &tf_shape));
-    Tensor* output_tensor = new Tensor(output_datatypes[i], tf_shape);
-
-    void* dst_ptr = DMAHelper::base(output_tensor);
-    NGRAPH_VLOG(5) << " DMA helper ";
-    // auto t_result = ng_backend->create_tensor(elem_type, shape, dst_ptr);
-    ng_op_tensors[i] = backend->create_tensor(ng_op_type, ng_op_shape, dst_ptr);
-    // NGRAPH_VLOG(5) << " backend create ";
-    ngraph_outputs.push_back(output_tensor);
+    vector<int64> dims;
+    for(auto dim : ng_op_shape){
+      dims.push_back(dim);
+    }
+    TensorShape tf_shape(dims);
+    tf_op_shapes.push_back(tf_shape);
+    //ng_op_tensors[i] = backend->create_tensor(ng_op_type, ng_op_shape);
+    auto result = backend->create_tensor(ng_op_type, ng_op_shape);
+    ng_op_tensors.push_back(result);
   }
 
-  // Executet the nGraph
-  NGRAPH_VLOG(5) << " Executing nGraph";
+  // Execute the nGraph
+  NGRAPH_VLOG(5) << " Executing on nGraph ";
   backend->call(ng_function, ng_op_tensors, ng_ip_tensors);
+  NGRAPH_VLOG(5) << " Executed nGraph";
 
   for (auto i = 0; i < ng_function->get_output_size(); i++) {
-    DumpNGTensor(cout, ng_function->get_output_op(i)->get_name(),
-                 ng_op_tensors[i]);
-    cout << endl;
+    // Convert to tf tensor
+    Tensor output_tensor(output_datatypes[i], tf_op_shapes[i]);
+    void* dst_ptr = DMAHelper::base(&output_tensor);
+    ng_op_tensors[i]->read(dst_ptr, 0, output_tensor.TotalBytes());
+    ngraph_outputs.push_back(output_tensor);
   }
-
-}  // rewrite finish
+  
+  
+}  // compute completed
 
 }  // namespace ngraph_bridge
 

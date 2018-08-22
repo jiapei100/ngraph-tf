@@ -44,7 +44,7 @@ class BuilderTest : public ::testing::Test {
 //      output_datatypes : vector of expected TF datatypes of the outputs
 //      ngraph_outputs   : vector of computed nGraph outputs as TF Tensors
     void ComputeOnNGraph(Graph& graph, string test_op_type,
-                      vector<DataType>& output_datatypes, vector<Tensor*>& ngraph_outputs);
+                      vector<DataType>& output_datatypes, vector<Tensor>& ngraph_outputs);
 };
 
 }  // namespace ngraph_bridge

@@ -84,7 +84,7 @@ TEST_F(BuilderTest, PlaceTest) {
   EXPECT_FLOAT_EQ(0.0, mat(1, 1));
 }
 
-TEST_F(BuilderTest, DirectExecution) {
+TEST_F(BuilderTest, DEAdd){
   // Create a tf graph
   Scope root = Scope::NewRootScope();
   int dim1 = 2;
@@ -93,8 +93,8 @@ TEST_F(BuilderTest, DirectExecution) {
   Tensor A(DT_FLOAT, TensorShape({dim1, dim2}));
   Tensor B(DT_FLOAT, TensorShape({dim1, dim2}));
 
-  DummyAssignInputValues(A, 2.0f);
-  DummyAssignInputValues(B, 4.0f);
+  DummyAssignInputValues(A, 2.1f);
+  DummyAssignInputValues(B, 4.1f);
 
   auto R = ops::Add(root, A, B);
 
@@ -108,13 +108,17 @@ TEST_F(BuilderTest, DirectExecution) {
   GraphToPbTextFile(&tf_graph, "tf_graph.pbtxt");
 
   // Compute the graph on nGraph and get output as TF Tensors
-  vector<Tensor*> ngraph_outputs;
+  vector<Tensor> ngraph_outputs;
   ComputeOnNGraph(tf_graph, "Add", output_datatypes, ngraph_outputs);
   NGRAPH_VLOG(5) << " printing ops " << ngraph_outputs.size();
 
   // Run on TF
-  // DummyActivateNGraph();
   DummyDeactivateNGraph();
+  Graph tf_graph_chk(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(&tf_graph_chk));
+
+  GraphToPbTextFile(&tf_graph_chk, "tf_graph_again.pbtxt");
+
   ClientSession session(root);
   vector<Tensor> tf_outputs;
   // Run and fetch v
@@ -123,14 +127,14 @@ TEST_F(BuilderTest, DirectExecution) {
   // Assert nGraph and TF outputs are the same
 
   ASSERT_EQ(tf_outputs.size(), ngraph_outputs.size());
-  DummyAssertTensorEquals(tf_outputs[0], *ngraph_outputs[0]);
+  DummyAssertTensorEquals(tf_outputs[0], ngraph_outputs[0]);
 }
 
 TEST_F(BuilderTest, DESparseSoftmax) {
   // Create a tf graph
   Scope root = Scope::NewRootScope();
-  int batch = 2;
-  int num_of_classes = 2;
+  int batch = 100;
+  int num_of_classes = 20;
 
   Tensor A(DT_FLOAT, TensorShape({batch, num_of_classes}));
   Tensor B(DT_INT32, TensorShape({batch}));
@@ -150,7 +154,7 @@ TEST_F(BuilderTest, DESparseSoftmax) {
   GraphToPbTextFile(&tf_graph, "tf_graph.pbtxt");
 
   // Compute the graph on nGraph and get output as TF Tensors
-  vector<Tensor*> ngraph_outputs;
+  vector<Tensor> ngraph_outputs;
   ComputeOnNGraph(tf_graph, "SparseSoftmaxCrossEntropyWithLogits",
                   output_datatypes, ngraph_outputs);
   NGRAPH_VLOG(5) << " printing ops " << ngraph_outputs.size();
@@ -166,7 +170,8 @@ TEST_F(BuilderTest, DESparseSoftmax) {
   // Assert nGraph and TF outputs are the same
 
   ASSERT_EQ(tf_outputs.size(), ngraph_outputs.size());
-  DummyAssertTensorEquals(tf_outputs[0], *ngraph_outputs[0]);
+  DummyAssertTensorEquals(tf_outputs[0], ngraph_outputs[0]);
+  DummyAssertTensorEquals(tf_outputs[1], ngraph_outputs[1]);
 }
 
 }  // namespace ngraph_bridge
