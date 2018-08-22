@@ -53,9 +53,7 @@ REGISTER_OP("NGraphEncapsulate")
 class NGraphEncapsulateOp : public OpKernel {
  public:
   explicit NGraphEncapsulateOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx),
-        m_graph(OpRegistry::Global()),
-        m_freshness_tracker(nullptr) {
+      : OpKernel(ctx), m_graph(OpRegistry::Global()), m_freshness_tracker(nullptr) {
     GraphDef* graph_def;
 
     // TODO(amprocte): need to check status result here.
@@ -93,28 +91,15 @@ class NGraphEncapsulateOp : public OpKernel {
     }
   }
 
-  // (added for debug shrestha)
-  void printTensor(const Tensor& T1) {
-    NGRAPH_VLOG(5) << "print tensor values";
-    auto T_size = T1.flat<float>().size();
-    auto T1_data = T1.flat<float>().data();
-    for (int k = 0; k < T_size; k++) {
-      NGRAPH_VLOG(5) << T1_data[k];
-    }
-  }
-
   // TODO(amprocte): this needs to be made thread-safe (compilation cache OK?).
   void Compute(OpKernelContext* ctx) override {
-    NGRAPH_VLOG(4) << "NGraphEncapsulateOp::Compute starting for cluster "
-                   << m_ngraph_cluster;
+    NGRAPH_VLOG(4) << "NGraphEncapsulateOp::Compute starting for cluster " << m_ngraph_cluster;
 
     // Get the inputs
     std::vector<TensorShape> input_shapes;
     std::stringstream signature_ss;
     for (int i = 0; i < ctx->num_inputs(); i++) {
       const Tensor& input_tensor = ctx->input(i);
-      NGRAPH_VLOG(5) << "input " << i << " shape " << input_tensor.shape();
-      printTensor(input_tensor);
       input_shapes.push_back(input_tensor.shape());
       for (const auto& x : input_tensor.shape()) {
         signature_ss << x.size << ",";
@@ -163,9 +148,10 @@ class NGraphEncapsulateOp : public OpKernel {
         return Status::OK();
       };
       OP_REQUIRES_OK(
-          ctx, ctx->resource_manager()->LookupOrCreate<NGraphFreshnessTracker>(
-                   ctx->resource_manager()->default_container(),
-                   "ngraph_freshness_tracker", &m_freshness_tracker, creator));
+          ctx,
+          ctx->resource_manager()->LookupOrCreate<NGraphFreshnessTracker>(
+              ctx->resource_manager()->default_container(),
+              "ngraph_freshness_tracker", &m_freshness_tracker, creator));
     }
 
     NGRAPH_VLOG(4)

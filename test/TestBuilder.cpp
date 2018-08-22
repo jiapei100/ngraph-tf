@@ -94,9 +94,9 @@ TEST_F(BuilderTest, DirectExecution) {
   Tensor B(DT_FLOAT, TensorShape({dim1, dim2}));
 
   DummyAssignInputValues(A, 2.0f);
-  DummyAssignInputValues(B, 2.0f);
+  DummyAssignInputValues(B, 4.0f);
 
-  auto R = ops::Add(root, A, A);
+  auto R = ops::Add(root, A, B);
 
   vector<DataType> output_datatypes = {DT_FLOAT};
 
@@ -113,6 +113,7 @@ TEST_F(BuilderTest, DirectExecution) {
   NGRAPH_VLOG(5) << " printing ops " << ngraph_outputs.size();
 
   // Run on TF
+  // DummyActivateNGraph();
   DummyDeactivateNGraph();
   ClientSession session(root);
   vector<Tensor> tf_outputs;
@@ -125,28 +126,47 @@ TEST_F(BuilderTest, DirectExecution) {
   DummyAssertTensorEquals(tf_outputs[0], *ngraph_outputs[0]);
 }
 
-TEST_F(BuilderTest, TFExec) {
+TEST_F(BuilderTest, DESparseSoftmax) {
   // Create a tf graph
   Scope root = Scope::NewRootScope();
-  int dim1 = 2;
-  int dim2 = 2;
+  int batch = 2;
+  int num_of_classes = 2;
 
-  Tensor A(DT_FLOAT, TensorShape({dim1, dim2}));
-  Tensor B(DT_FLOAT, TensorShape({dim1, dim2}));
+  Tensor A(DT_FLOAT, TensorShape({batch, num_of_classes}));
+  Tensor B(DT_INT32, TensorShape({batch}));
 
   DummyAssignInputValues(A, 2.0f);
-  DummyAssignInputValues(B, 2.0f);
+  DummyAssignInputIntValues(B, num_of_classes);
 
-  auto R = ops::Add(root, A, B);
+  auto R = ops::SparseSoftmaxCrossEntropyWithLogits(root, A, B);
 
-  vector<DataType> output_datatypes = {DT_FLOAT};
+  vector<DataType> output_datatypes = {DT_FLOAT, DT_FLOAT};
 
+  // Get the graph from the declared scope
+  Graph tf_graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(&tf_graph));
+
+  // For debug
+  GraphToPbTextFile(&tf_graph, "tf_graph.pbtxt");
+
+  // Compute the graph on nGraph and get output as TF Tensors
+  vector<Tensor*> ngraph_outputs;
+  ComputeOnNGraph(tf_graph, "SparseSoftmaxCrossEntropyWithLogits",
+                  output_datatypes, ngraph_outputs);
+  NGRAPH_VLOG(5) << " printing ops " << ngraph_outputs.size();
+
+  // Run on TF
   // DummyActivateNGraph();
-  DummyActivateNGraph();
+  DummyDeactivateNGraph();
   ClientSession session(root);
   vector<Tensor> tf_outputs;
   // Run and fetch v
-  ASSERT_OK(session.Run({R}, &tf_outputs));
+  ASSERT_OK(session.Run({R.loss, R.backprop}, &tf_outputs));
+
+  // Assert nGraph and TF outputs are the same
+
+  ASSERT_EQ(tf_outputs.size(), ngraph_outputs.size());
+  DummyAssertTensorEquals(tf_outputs[0], *ngraph_outputs[0]);
 }
 
 }  // namespace ngraph_bridge

@@ -40,7 +40,7 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   bool found_test_op = false;
   for (Node* node : graph.nodes()) {
     if (node->IsSource() || node->IsSink()) {
-      continue;
+      // continue;
     } else if (node->type_string() == test_op_type) {
       // only one node of type test_op
       ASSERT_FALSE(found_test_op);
@@ -49,12 +49,55 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     } else {
       ASSERT_TRUE(node->type_string() == "Const");
     }
+    // NGRAPH_VLOG(5) << "Got source or sink";
+    NGRAPH_VLOG(5) << "node type string op found " << node->name();
+    NGRAPH_VLOG(5) << "Num Inputs " << node->num_inputs();
+    NGRAPH_VLOG(5) << "Num Ouputs " << node->num_outputs();
+    NGRAPH_VLOG(5) << "Num In Edges " << node->in_edges().size();
+    NGRAPH_VLOG(5) << "Num Out Edges " << node->out_edges().size();
+
+    NGRAPH_VLOG(5) << "Print in edges ";
+    for (const Edge* e : node->in_edges()) {
+      if (e == NULL) {
+        NGRAPH_VLOG(5) << "Found null";
+        continue;
+      }
+      NGRAPH_VLOG(5) << "Found in edge " << e->src()->name();
+    }
+
+    NGRAPH_VLOG(5) << "Print out edges ";
+    for (const Edge* e : node->out_edges()) {
+      if (e == NULL) {
+        NGRAPH_VLOG(5) << "Found null";
+        continue;
+      }
+      NGRAPH_VLOG(5) << "Found out edge " << e->dst()->name();
+    }
+
+    continue;
   }
 
+  // Maps
+  // src_metadata : key : node
+  //                   val : vector<std::make_pair<Node*, int > , i.e. <input
+  //                   node *, input index>
+  // dst_metadata : key : node
+  //                   val : vector<std::make_pair<Node*, int > , i.e. <output
+  //                   node *, output index>
+
+  map<Node*, vector<pair<Node*, int>>> node_inedge_metadata;
+  map<Node*, vector<pair<Node*, int>>> node_outedge_metadata;
+  map<Node*, vector<const Edge*>> node_out_edges;
   NGRAPH_VLOG(5) << "Check graph complete";
   for (const Edge* e : graph.edges()) {
     NGRAPH_VLOG(5) << "Edge between, Src: " << e->src()->name()
-                   << " ,Dst: " << e->dst()->name();
+                   << " Src op index " << e->src_output()
+                   << " ,Dst: " << e->dst()->name() << " dst ip index "
+                   << e->dst_input();
+    // update src's outedge metadata
+    node_outedge_metadata[e->src()].push_back({e->dst(), e->dst_input()});
+    node_inedge_metadata[e->dst()].push_back({e->src(), e->src_output()});
+    node_out_edges[e->src()].push_back(e);
   }
 
   // Replace the input nodes ("Const") with _Arg nodes
@@ -64,14 +107,17 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   vector<Tensor*> input_tensors(number_of_inputs);
   vector<Node*> input_node(number_of_inputs);
 
-  Tensor ip_tensor;
   for (int i = 0; i < number_of_inputs; i++) {
     Node* ip;
+    Tensor* ip_tensor = nullptr;
     ASSERT_EQ(Status::OK(), test_op->input_node(i, &ip));
-    ASSERT_EQ(Status::OK(), GetNodeAttr(ip->attrs(), "value", &ip_tensor));
-    input_shapes[i] = ip_tensor.shape();
-    input_tensors[i] = &ip_tensor;
+    NGRAPH_VLOG(5) << "Fetching tensor ";
+    ASSERT_EQ(Status::OK(), GetNodeAttr(ip->attrs(), "value", ip_tensor));
+    input_shapes[i] = ip_tensor->shape();
+    input_tensors[i] = ip_tensor;
     input_node[i] = ip;
+    NGRAPH_VLOG(5) << " Print extracted tensor " << i << " "
+                   << ip_tensor->DebugString();
   }
 
   NGRAPH_VLOG(5) << "Got input nodes and tensors";
@@ -79,15 +125,7 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   // replace inputs with
   for (int i = 0; i < number_of_inputs; i++) {
     Node* ip_node = input_node[i];
-    // For all the input edges (should be 1) to ip_node get the source node and
-    // the source_output_index feeding to this node
-    // // (TO DO : ) ADD ASSERT
-    vector<std::pair<Node*, int>> src_nodes_metadata;
-
-    for (const Edge* e : ip_node->in_edges()) {
-      src_nodes_metadata.push_back({e->src(), e->src_output()});
-    }
-
+    auto src_nodes_metadata = node_inedge_metadata[ip_node];
     // Define new _arg node, make function
     string new_node_name = "arg_" + std::to_string(i);  // or ngraph_input_
     NodeDef* new_arg_node_def = new NodeDef();
@@ -96,7 +134,8 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     SetAttrValue(input_tensors[i]->dtype(),
                  &((*(new_arg_node_def->mutable_attr()))["T"]));
     SetAttrValue(i, &((*(new_arg_node_def->mutable_attr()))["index"]));
-
+    NGRAPH_VLOG(5) << " Print in arg nodes " << i << " "
+                   << input_tensors[i]->DebugString();
     // Add node to graph
     Status status;
     Node* arg_node = graph.AddNode(*new_arg_node_def, &status);
@@ -123,18 +162,12 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
   // get the dest node and the
   // destination_input_index
   // (TO DO : ) ADD ASSERT
-  vector<std::pair<Node*, int>> dest_nodes_metadata;
+  auto dest_nodes_metadata = node_outedge_metadata[test_op];
 
-  for (const Edge* e : test_op->out_edges()) {
-    if (e == nullptr) {
-      NGRAPH_VLOG(5) << "Found null edge, ";
-      continue;
-    }
-    NGRAPH_VLOG(5) << "Found out edge, ";
-    dest_nodes_metadata.push_back({e->dst(), e->dst_input()});
+  // Remove edges from test_op to SINK (not removing might be also ok)
+  for (const Edge* e : node_out_edges[test_op]) {
+    graph.RemoveEdge(e);
   }
-
-  NGRAPH_VLOG(5) << "Got out edges _Arg";
 
   for (int i = 0; i < number_of_outputs; i++) {
     // Add new _args node
@@ -150,18 +183,20 @@ void BuilderTest::ComputeOnNGraph(Graph& graph, string test_op_type,
     Node* ret_node = graph.AddNode(*new_ret_node_def, &status);
     ASSERT_EQ(Status::OK(), status);
 
+    // Add edges from ret_val to sink
     for (int j = 0; j < dest_nodes_metadata.size(); j++) {
       graph.AddEdge(ret_node, 0, dest_nodes_metadata[j].first,
                     dest_nodes_metadata[j].second);
     }
 
+    // Add edges from
     graph.AddEdge(test_op, i, ret_node, 0);
   }
 
   NGRAPH_VLOG(5) << "Added _Retval nodes ";
 
   NGRAPH_VLOG(5) << "After rewrite *** ";
-   for (const Edge* e : graph.edges()) {
+  for (const Edge* e : graph.edges()) {
     NGRAPH_VLOG(5) << "Edge between, Src: " << e->src()->name()
                    << " ,Dst: " << e->dst()->name();
   }
