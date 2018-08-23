@@ -43,37 +43,21 @@ namespace tensorflow {
 
 namespace ngraph_bridge {
 
+namespace testing{
+
 class BuilderTestSimple {
  public:
-  // Constructor
+  using NodeMetaData = map<Node*, vector<std::pair<Node*, int>>>;
+  using NodeOutEdges = map<Node*, vector<const Edge*>>;
+
   BuilderTestSimple(const Scope sc, const string test_op,
                     const vector<DataType>& op_types,const std::vector<Output>& fetch_ops);
 
-  // Destructor
-  //~BuilderTestSimple();
-
-  void ComputeOnNGraph(Graph& graph, string test_op_type,
-                       vector<Tensor*> tf_inputs,
-                       vector<DataType>& output_datatypes,
-                       vector<Tensor*>& ngraph_outputs);
-  // Compute the tfGraph on nGraph
-  //          graph        : Tf Graph to be computed
-  //                         Must have only these nodes
-  //                          1. n number of "Const" nodes for inputs
-  //                          2. 1 node of type test_op_type
-  //      test_op_type     : type of the test op ("Add", "ReluGrad")
-  //      output_datatypes : vector of expected TF datatypes of the outputs
-  //      ngraph_outputs   : vector of computed nGraph outputs as TF Tensors
-  void ComputeOnNGraph(Graph& graph, string test_op_type,
-                       vector<DataType>& output_datatypes,
-                       vector<Tensor>& ngraph_outputs);
+  ~BuilderTestSimple();
 
   void ExecuteOnNGraph();
   void ExecuteOnTF();
   void CompareNgraphAndTF();
-
-  using NodeMetaData = map<Node*, vector<std::pair<Node*, int>>>;
-  using NodeOutEdges = map<Node*, vector<const Edge*>>;
 
  private:
   Scope tf_scope_;
@@ -82,8 +66,7 @@ class BuilderTestSimple {
   vector<Tensor> tf_outputs_;
   vector<Tensor> ngraph_outputs_;
   const vector<DataType> expected_output_datatypes_;
-
-  //const FeedType sess_run_inputs_;
+  // To Do : For placeholder const FeedType sess_run_inputs_;
   const std::vector<Output> sess_run_fetchoutputs_;
   
 
@@ -91,9 +74,9 @@ class BuilderTestSimple {
                    NodeMetaData& node_outedge_md, NodeOutEdges& node_outedges, Node** test_op);
   void ValidateGraph(const Graph& graph, const vector<string> allowed_nodes);
   void CreateNodeDef(const string op_type, const string op_name_prefix,int index, const DataType dt, NodeDef& node_def);
-  void ExecuteOnNGraph(shared_ptr<ng::Function> ng_function);
 };
 
+} // namespace testing
 }  // namespace ngraph_bridge
 
 }  // namespace tensorflow

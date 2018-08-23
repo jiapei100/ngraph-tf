@@ -26,7 +26,6 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/graph/algorithm.h"
-// #include "tensorflow/core/graph/default_device.h" : should not need this
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
@@ -42,7 +41,9 @@ namespace ng = ngraph;
 namespace tensorflow {
 
 namespace ngraph_bridge {
-// check why
+
+namespace testing{
+
 #define ASSERT_OK(x) ASSERT_EQ((x), ::tensorflow::Status::OK());
 
 TEST(TestSimple, SimpleDEAdd) {
@@ -69,7 +70,6 @@ TEST(TestSimple, SimpleDEAdd) {
 }
 
 TEST(TestSimple, SimpleDESparseSoftmax) {
-  // Create a tf graph
   Scope root = Scope::NewRootScope();
   int batch = 1000;
   int num_of_classes = 200;
@@ -93,7 +93,6 @@ TEST(TestSimple, SimpleDESparseSoftmax) {
 }
 
 TEST(TestSimple, SimpleDERealDiv) {
-  // Create a tf graph
   Scope root = Scope::NewRootScope();
   int dim1 = 100;
   int dim2 = 200;
@@ -116,7 +115,7 @@ TEST(TestSimple, SimpleDERealDiv) {
   buildertest.CompareNgraphAndTF();
 }
 
-
+} // namespace testing
 
 }  // namespace ngraph_bridge
 }  // namespace tensorflow
