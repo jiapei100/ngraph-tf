@@ -43,7 +43,6 @@ namespace ngraph_bridge {
 
 #define ASSERT_OK(x) ASSERT_EQ((x), ::tensorflow::Status::OK());
 
-
 TEST_F(BuilderTest, PlaceTest) {
   Scope root = Scope::NewRootScope();
   auto A = ops::Placeholder(root, DataType::DT_FLOAT);
@@ -85,9 +84,7 @@ TEST_F(BuilderTest, PlaceTest) {
   EXPECT_FLOAT_EQ(0.0, mat(1, 1));
 }
 
-
-
-TEST_F(BuilderTest, DEAdd){
+TEST_F(BuilderTest, DEAdd) {
   // Create a tf graph
   Scope root = Scope::NewRootScope();
   int dim1 = 2;

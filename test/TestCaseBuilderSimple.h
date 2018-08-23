@@ -46,12 +46,11 @@ namespace ngraph_bridge {
 class BuilderTestSimple {
  public:
   // Constructor
-  // BuilderTestSimple();
+  BuilderTestSimple(const Scope sc, const string test_op,
+                    const vector<DataType>& op_types,const std::vector<Output>& fetch_ops);
 
-  BuilderTestSimple();
-
-  // Destructor // check private or public
-  ~BuilderTestSimple();
+  // Destructor
+  //~BuilderTestSimple();
 
   void ComputeOnNGraph(Graph& graph, string test_op_type,
                        vector<Tensor*> tf_inputs,
@@ -70,7 +69,7 @@ class BuilderTestSimple {
                        vector<Tensor>& ngraph_outputs);
 
   void ExecuteOnNGraph();
-  void ExecuteOnTf();
+  void ExecuteOnTF();
   void CompareNgraphAndTF();
 
   using NodeMetaData = map<Node*, vector<std::pair<Node*, int>>>;
@@ -78,13 +77,21 @@ class BuilderTestSimple {
 
  private:
   Scope tf_scope_;
-  string test_op_type_;
+  const string test_op_type_;
   vector<Tensor> tf_inputs_;
+  vector<Tensor> tf_outputs_;
   vector<Tensor> ngraph_outputs_;
-  vector<DataType> expected_output_datatypes_;
+  const vector<DataType> expected_output_datatypes_;
+
+  //const FeedType sess_run_inputs_;
+  const std::vector<Output> sess_run_fetchoutputs_;
+  
 
   void GetNodeData(Graph& graph, NodeMetaData& node_inedge_md,
-                   NodeMetaData& node_outedge_md, NodeOutEdges& node_outedges);
+                   NodeMetaData& node_outedge_md, NodeOutEdges& node_outedges, Node** test_op);
+  void ValidateGraph(const Graph& graph, const vector<string> allowed_nodes);
+  void CreateNodeDef(const string op_type, const string op_name_prefix,int index, const DataType dt, NodeDef& node_def);
+  void ExecuteOnNGraph(shared_ptr<ng::Function> ng_function);
 };
 
 }  // namespace ngraph_bridge

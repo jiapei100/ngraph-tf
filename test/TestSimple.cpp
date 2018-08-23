@@ -53,50 +53,70 @@ TEST(TestSimple, SimpleDEAdd) {
 
   Tensor A(DT_FLOAT, TensorShape({dim1, dim2}));
   Tensor B(DT_FLOAT, TensorShape({dim1, dim2}));
-
+  //auto C = ops::Mul(root,A, B);
   DummyAssignInputValues(A, 2.1f);
   DummyAssignInputValues(B, 4.1f);
 
   auto R = ops::Add(root, A, B);
 
   vector<DataType> output_datatypes = {DT_FLOAT};
+  std::vector<Output> sess_run_fetchoutputs = {R};
+  BuilderTestSimple buildertest(root, "Add", output_datatypes, sess_run_fetchoutputs);
 
-  // BuilderTestSimple buildertest(root, "Add", output_datatypes);
-
-  // buildertest.ExecuteOnNgraph();
-
-  /*
-  // Get the graph from the declared scope
-  Graph tf_graph(OpRegistry::Global());
-  TF_CHECK_OK(root.ToGraph(&tf_graph));
-
-  // For debug
-  GraphToPbTextFile(&tf_graph, "tf_graph.pbtxt");
-
-  // Compute the graph on nGraph and get output as TF Tensors
-  vector<Tensor> ngraph_outputs;
-  ComputeOnNGraph(tf_graph, "Add", output_datatypes, ngraph_outputs);
-  NGRAPH_VLOG(5) << " printing ops " << ngraph_outputs.size();
-
-  // Run on TF
-  DummyDeactivateNGraph();
-  Graph tf_graph_chk(OpRegistry::Global());
-  TF_CHECK_OK(root.ToGraph(&tf_graph_chk));
-
-  GraphToPbTextFile(&tf_graph_chk, "tf_graph_again.pbtxt");
-
-  ClientSession session(root);
-  vector<Tensor> tf_outputs;
-  // Run and fetch v
-  ASSERT_OK(session.Run({R}, &tf_outputs));
-
-  // Assert nGraph and TF outputs are the same
-
-  ASSERT_EQ(tf_outputs.size(), ngraph_outputs.size());
-  DummyAssertTensorEquals(tf_outputs[0], ngraph_outputs[0]);
-
-  */
+  buildertest.ExecuteOnNGraph();
+  buildertest.ExecuteOnTF();
+  buildertest.CompareNgraphAndTF();
 }
+
+TEST(TestSimple, SimpleDESparseSoftmax) {
+  // Create a tf graph
+  Scope root = Scope::NewRootScope();
+  int batch = 1000;
+  int num_of_classes = 200;
+
+  Tensor A(DT_FLOAT, TensorShape({batch, num_of_classes}));
+  Tensor B(DT_INT32, TensorShape({batch}));
+
+  DummyAssignInputValues(A, 2.0f);
+  DummyAssignInputIntValues(B, num_of_classes);
+
+  auto R = ops::SparseSoftmaxCrossEntropyWithLogits(root, A, B);
+
+  vector<DataType> output_datatypes = {DT_FLOAT, DT_FLOAT};
+
+  std::vector<Output> sess_run_fetchoutputs = {R.loss, R.backprop};
+  BuilderTestSimple buildertest(root, "SparseSoftmaxCrossEntropyWithLogits", output_datatypes, sess_run_fetchoutputs);
+
+  buildertest.ExecuteOnNGraph();
+  buildertest.ExecuteOnTF();
+  buildertest.CompareNgraphAndTF();
+}
+
+TEST(TestSimple, SimpleDERealDiv) {
+  // Create a tf graph
+  Scope root = Scope::NewRootScope();
+  int dim1 = 100;
+  int dim2 = 200;
+
+  Tensor A(DT_FLOAT, TensorShape({dim1, dim2}));
+  Tensor B(DT_FLOAT, TensorShape({dim1, dim2}));
+
+  DummyAssignInputValues(A, 2.0f);
+  DummyAssignInputValues(B, 7.0f);
+  
+  auto R = ops::RealDiv(root, A, B);
+
+  vector<DataType> output_datatypes = {DT_FLOAT};
+
+  std::vector<Output> sess_run_fetchoutputs = {R};
+  BuilderTestSimple buildertest(root, "RealDiv", output_datatypes, sess_run_fetchoutputs);
+
+  buildertest.ExecuteOnNGraph();
+  buildertest.ExecuteOnTF();
+  buildertest.CompareNgraphAndTF();
+}
+
+
 
 }  // namespace ngraph_bridge
 }  // namespace tensorflow
