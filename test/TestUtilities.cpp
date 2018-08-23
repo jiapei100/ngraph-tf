@@ -68,15 +68,6 @@ void DummyPrintTensor(const Tensor& T1) {
   LOG(INFO) << "print tensor values" << T1.DebugString();
 }
 
-Status NGraphShapeToTFShape(ng::Shape& ng_op_shape, TensorShape *tf_shape){
-  vector<int64> dims;
-  for(auto dim : ng_op_shape){
-    dims.push_back(dim);
-  }
-  TensorShape tshape(dims);
-  tf_shape=&tshape;
-  return Status::OK();
-}
 
 }  // namespace ngraph_bridge
 

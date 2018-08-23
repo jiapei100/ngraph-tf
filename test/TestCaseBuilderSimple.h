@@ -27,7 +27,6 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/graph/algorithm.h"
-// #include "tensorflow/core/graph/default_device.h" : should not need this
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
@@ -44,8 +43,16 @@ namespace tensorflow {
 
 namespace ngraph_bridge {
 
-class BuilderTest : public ::testing::Test {
+class BuilderTestSimple {
  public:
+  // Constructor
+  // BuilderTestSimple();
+
+  BuilderTestSimple();
+
+  // Destructor // check private or public
+  ~BuilderTestSimple();
+
   void ComputeOnNGraph(Graph& graph, string test_op_type,
                        vector<Tensor*> tf_inputs,
                        vector<DataType>& output_datatypes,
@@ -61,6 +68,23 @@ class BuilderTest : public ::testing::Test {
   void ComputeOnNGraph(Graph& graph, string test_op_type,
                        vector<DataType>& output_datatypes,
                        vector<Tensor>& ngraph_outputs);
+
+  void ExecuteOnNGraph();
+  void ExecuteOnTf();
+  void CompareNgraphAndTF();
+
+  using NodeMetaData = map<Node*, vector<std::pair<Node*, int>>>;
+  using NodeOutEdges = map<Node*, vector<const Edge*>>;
+
+ private:
+  Scope tf_scope_;
+  string test_op_type_;
+  vector<Tensor> tf_inputs_;
+  vector<Tensor> ngraph_outputs_;
+  vector<DataType> expected_output_datatypes_;
+
+  void GetNodeData(Graph& graph, NodeMetaData& node_inedge_md,
+                   NodeMetaData& node_outedge_md, NodeOutEdges& node_outedges);
 };
 
 }  // namespace ngraph_bridge
